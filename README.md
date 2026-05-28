@@ -48,7 +48,7 @@ Digite o número da planilha GERAL de alunos: 1
 
 | Nome | Sobrenome | Endereço de e-mail | Grupos |
 |---|---|---|---|
-| ADRIEL | FULANO SILVA | fulano@email.com | Pernambuco: Aponti PE - 00.501.070/0001-23 |
+| ADRIEL | FULANO DA SILVA | fulano@email.com | Pernambuco: Aponti PE - 00.501.070/0001-23 |
 
 O campo **Grupos** deve seguir o formato `Estado: Empresa - CNPJ`. Estado e empresa são extraídos automaticamente.
 
@@ -58,7 +58,7 @@ Devem conter uma coluna chamada **`Nome completo`** com o nome de quem respondeu
 
 | Nome completo | Grupos | Endereço de e-mail | Data | ... |
 |---|---|---|---|---|
-| ADRIEL GOMES SILVA | ... | ... | ... | ... |
+| ADRIEL FULANO DA SILVA | ... | ... | ... | ... |
 
 ## Resultado
 
