@@ -11,6 +11,13 @@ def normalizar_nome(nome: str) -> str:
     return re.sub(r"\s+", " ", nome.strip()).lower()
 
 
+def normalizar_empresa(empresa: str) -> str:
+    """Normaliza o nome da empresa para comparação (case-insensitive, sem espaços extras)."""
+    if not isinstance(empresa, str):
+        return ""
+    return re.sub(r"\s+", " ", empresa.strip()).lower()
+
+
 def parsear_grupos(valor: str) -> tuple[str, str]:
     """Extrai estado e empresa do campo Grupos.
 
@@ -75,6 +82,49 @@ def carregar_alunos(path: Path) -> pd.DataFrame:
     )
 
 
+def selecionar_filtro_empresa(df_alunos: pd.DataFrame) -> str | None:
+    """Pergunta ao usuário se deseja filtrar por empresa e retorna o filtro escolhido."""
+    empresas_unicas = sorted(df_alunos["empresa"].unique().tolist())
+    empresas_unicas = [e for e in empresas_unicas if e]  # remove vazios
+
+    if not empresas_unicas:
+        print("\nNenhuma empresa encontrada na planilha. Auditando todos.")
+        return None
+
+    print("\nEmpresas encontradas:")
+    print("  [0] Todas as empresas (sem filtro)")
+    for i, emp in enumerate(empresas_unicas, 1):
+        print(f"  [{i}] {emp}")
+
+    while True:
+        try:
+            escolha = int(input("\nFiltrar por empresa? Digite o número (0 para todas): "))
+            if escolha == 0:
+                return None
+            if 1 <= escolha <= len(empresas_unicas):
+                empresa_selecionada = empresas_unicas[escolha - 1]
+                print(f"\nFiltro aplicado: apenas residentes de '{empresa_selecionada}'")
+                return empresa_selecionada
+            print(f"  Digite um número entre 0 e {len(empresas_unicas)}.")
+        except ValueError:
+            print("  Entrada inválida. Digite apenas o número.")
+
+
+def filtrar_por_empresa(df_alunos: pd.DataFrame, empresa: str | None) -> pd.DataFrame:
+    """Filtra o DataFrame de alunos pela empresa (parcial, case-insensitive)."""
+    if not empresa:
+        return df_alunos
+
+    filtro = normalizar_empresa(empresa)
+    mask = df_alunos["empresa"].apply(normalizar_empresa).str.contains(filtro, regex=False)
+    df_filtrado = df_alunos[mask].copy()
+
+    if df_filtrado.empty:
+        print(f"\nAVISO: Nenhum aluno encontrado para a empresa '{empresa}'.")
+
+    return df_filtrado
+
+
 def carregar_relatorio(path: Path) -> set[str]:
     df = pd.read_csv(path, dtype=str).fillna("")
 
@@ -83,6 +133,19 @@ def carregar_relatorio(path: Path) -> set[str]:
         return set()
 
     return {normalizar_nome(n) for n in df["Nome completo"] if n.strip()}
+
+
+def carregar_emails_empresas(diretorio: Path) -> dict[str, str]:
+    """Carrega emails das empresas dos arquivos Empresas - *.csv"""
+    emails = {}
+    for path in diretorio.glob("Empresas - *.csv"):
+        df = pd.read_csv(path, dtype=str).fillna("")
+        for _, row in df.iterrows():
+            empresa = normalizar_empresa(row.get("Empresa", ""))
+            email = str(row.get("Email", "")).strip()
+            if empresa and email:
+                emails[empresa] = email
+    return emails
 
 
 def calcular_ausencias(
@@ -108,8 +171,10 @@ def calcular_ausencias(
     return pd.DataFrame(linhas)
 
 
-def exibir_resultado(df: pd.DataFrame, nomes_relatorios: list[str]) -> None:
+def exibir_resultado(df: pd.DataFrame, nomes_relatorios: list[str], empresa_filtro: str | None) -> None:
     print(f"\nRelatórios processados: {', '.join(sorted(nomes_relatorios))}")
+    if empresa_filtro:
+        print(f"Filtro de empresa aplicado: {empresa_filtro}")
     print("-" * 80)
 
     if df.empty:
@@ -140,16 +205,47 @@ def exibir_resultado(df: pd.DataFrame, nomes_relatorios: list[str]) -> None:
     print(f"\nTotal: {len(df)} aluno(s) com pelo menos 1 ausência.")
 
 
-def salvar_resultado(df: pd.DataFrame, destino: Path) -> None:
+def salvar_resultado(df: pd.DataFrame, destino: Path, empresa_filtro: str | None, emails: dict[str, str] | None = None) -> None:
     if df.empty:
         print("Nenhuma ausência encontrada. Arquivo de resultado não gerado.")
         return
+
+    # Se houver filtro, inclui o nome da empresa no arquivo de saída
+    if empresa_filtro:
+        sufixo = re.sub(r"[^\w]", "_", empresa_filtro.strip().lower())
+        destino = destino.parent / f"resultado_auditoria_{sufixo}.csv"
+    else:
+        destino = destino.parent / "auditoria_2.csv"
+
+    if emails:
+        df = df.copy()
+        df["email"] = df["empresa"].apply(lambda e: emails.get(normalizar_empresa(e), ""))
+
     df.to_csv(destino, index=False, encoding="utf-8-sig")
     print(f"Resultado salvo em: {destino}")
 
 
-def main() -> None:
-    diretorio = Path(".")
+def menu_principal() -> int:
+    """Exibe menu principal e retorna a escolha do usuário."""
+    print("\n" + "=" * 50)
+    print("  PENTE FINO - Menu Principal")
+    print("=" * 50)
+    print("  [1] Executar Auditoria Completa")
+    print("  [2] Listar Empresas Disponíveis")
+    print("  [3] Listar Arquivos CSV")
+    print("  [0] Sair")
+    print("-" * 50)
+    while True:
+        try:
+            escolha = int(input("Escolha uma opção: "))
+            if 0 <= escolha <= 3:
+                return escolha
+            print("  Digite 0, 1, 2 ou 3.")
+        except ValueError:
+            print("  Entrada inválida. Digite 0, 1, 2 ou 3.")
+
+
+def executar_auditoria(diretorio: Path) -> None:
     csvs = listar_csvs(diretorio)
     planilha_geral = selecionar_planilha_geral(csvs)
 
@@ -157,10 +253,18 @@ def main() -> None:
     df_alunos = carregar_alunos(planilha_geral)
     print(f"  {len(df_alunos)} aluno(s) encontrado(s).")
 
+    empresa_filtro = selecionar_filtro_empresa(df_alunos)
+    df_alunos = filtrar_por_empresa(df_alunos, empresa_filtro)
+    print(f"  {len(df_alunos)} aluno(s) após filtro.")
+
+    if df_alunos.empty:
+        print("Nenhum aluno para auditar. Encerrando.")
+        return
+
     relatorios_paths = [p for p in csvs if p != planilha_geral]
     if not relatorios_paths:
         print("Nenhum relatório encontrado além da planilha geral. Encerrando.")
-        sys.exit(0)
+        return
 
     relatorios: dict[str, set[str]] = {}
     for path in relatorios_paths:
@@ -170,11 +274,60 @@ def main() -> None:
 
     if not relatorios:
         print("Nenhum relatório válido encontrado. Encerrando.")
-        sys.exit(0)
+        return
 
     df_resultado = calcular_ausencias(df_alunos, relatorios)
-    exibir_resultado(df_resultado, list(relatorios.keys()))
-    salvar_resultado(df_resultado, diretorio / "resultado_auditoria.csv")
+    exibir_resultado(df_resultado, list(relatorios.keys()), empresa_filtro)
+    emails = carregar_emails_empresas(diretorio)
+    salvar_resultado(df_resultado, diretorio / "auditoria_2.csv", empresa_filtro, emails)
+
+
+def listar_empresas(diretorio: Path) -> None:
+    # Procura residentes.csv diretamente
+    residentes_path = diretorio / "residentes.csv"
+    if not residentes_path.exists():
+        print("  AVISO: residentes.csv não encontrado.")
+        return
+
+    df_alunos = carregar_alunos(residentes_path)
+    empresas = sorted(df_alunos["empresa"].unique().tolist())
+    empresas = [e for e in empresas if e]
+
+    print(f"\n{len(empresas)} empresa(s) encontrada(s):")
+    for i, emp in enumerate(empresas, 1):
+        print(f"  [{i}] {emp}")
+
+
+def main() -> None:
+    # Detecta se está no diretório docs ou no pai
+    scripts_dir = Path(__file__).parent.resolve()
+    work_dir = Path(".").resolve()
+
+    # Se existem CSVs no dir atual, usa ele; senão procura docs/ (irmão de pente_fino.py)
+    csvs_test = list(work_dir.glob("*.csv"))
+    if csvs_test:
+        diretorio = work_dir
+    else:
+        docs_dir = scripts_dir / "docs"
+        if docs_dir.exists() and list(docs_dir.glob("*.csv")):
+            diretorio = docs_dir
+            print(f"\nDirecionando para: {docs_dir.name}/")
+        else:
+            diretorio = work_dir
+            print("\nAVISO: Nenhum arquivo .csv encontrado.")
+
+    while True:
+        escolha = menu_principal()
+
+        if escolha == 0:
+            print("\nSaindo... Até mais!")
+            break
+        elif escolha == 1:
+            executar_auditoria(diretorio)
+        elif escolha == 2:
+            listar_empresas(diretorio)
+        elif escolha == 3:
+            listar_csvs(diretorio)
 
 
 if __name__ == "__main__":
