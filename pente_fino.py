@@ -11,6 +11,13 @@ def normalizar_nome(nome: str) -> str:
     return re.sub(r"\s+", " ", nome.strip()).lower()
 
 
+def normalizar_empresa(empresa: str) -> str:
+    """Normaliza o nome da empresa para comparação (case-insensitive, sem espaços extras)."""
+    if not isinstance(empresa, str):
+        return ""
+    return re.sub(r"\s+", " ", empresa.strip()).lower()
+
+
 def parsear_grupos(valor: str) -> tuple[str, str]:
     """Extrai estado e empresa do campo Grupos.
 
@@ -75,6 +82,49 @@ def carregar_alunos(path: Path) -> pd.DataFrame:
     )
 
 
+def selecionar_filtro_empresa(df_alunos: pd.DataFrame) -> str | None:
+    """Pergunta ao usuário se deseja filtrar por empresa e retorna o filtro escolhido."""
+    empresas_unicas = sorted(df_alunos["empresa"].unique().tolist())
+    empresas_unicas = [e for e in empresas_unicas if e]  # remove vazios
+
+    if not empresas_unicas:
+        print("\nNenhuma empresa encontrada na planilha. Auditando todos.")
+        return None
+
+    print("\nEmpresas encontradas:")
+    print("  [0] Todas as empresas (sem filtro)")
+    for i, emp in enumerate(empresas_unicas, 1):
+        print(f"  [{i}] {emp}")
+
+    while True:
+        try:
+            escolha = int(input("\nFiltrar por empresa? Digite o número (0 para todas): "))
+            if escolha == 0:
+                return None
+            if 1 <= escolha <= len(empresas_unicas):
+                empresa_selecionada = empresas_unicas[escolha - 1]
+                print(f"\nFiltro aplicado: apenas residentes de '{empresa_selecionada}'")
+                return empresa_selecionada
+            print(f"  Digite um número entre 0 e {len(empresas_unicas)}.")
+        except ValueError:
+            print("  Entrada inválida. Digite apenas o número.")
+
+
+def filtrar_por_empresa(df_alunos: pd.DataFrame, empresa: str | None) -> pd.DataFrame:
+    """Filtra o DataFrame de alunos pela empresa (parcial, case-insensitive)."""
+    if not empresa:
+        return df_alunos
+
+    filtro = normalizar_empresa(empresa)
+    mask = df_alunos["empresa"].apply(normalizar_empresa).str.contains(filtro, regex=False)
+    df_filtrado = df_alunos[mask].copy()
+
+    if df_filtrado.empty:
+        print(f"\nAVISO: Nenhum aluno encontrado para a empresa '{empresa}'.")
+
+    return df_filtrado
+
+
 def carregar_relatorio(path: Path) -> set[str]:
     df = pd.read_csv(path, dtype=str).fillna("")
 
@@ -108,8 +158,10 @@ def calcular_ausencias(
     return pd.DataFrame(linhas)
 
 
-def exibir_resultado(df: pd.DataFrame, nomes_relatorios: list[str]) -> None:
+def exibir_resultado(df: pd.DataFrame, nomes_relatorios: list[str], empresa_filtro: str | None) -> None:
     print(f"\nRelatórios processados: {', '.join(sorted(nomes_relatorios))}")
+    if empresa_filtro:
+        print(f"Filtro de empresa aplicado: {empresa_filtro}")
     print("-" * 80)
 
     if df.empty:
@@ -140,10 +192,16 @@ def exibir_resultado(df: pd.DataFrame, nomes_relatorios: list[str]) -> None:
     print(f"\nTotal: {len(df)} aluno(s) com pelo menos 1 ausência.")
 
 
-def salvar_resultado(df: pd.DataFrame, destino: Path) -> None:
+def salvar_resultado(df: pd.DataFrame, destino: Path, empresa_filtro: str | None) -> None:
     if df.empty:
         print("Nenhuma ausência encontrada. Arquivo de resultado não gerado.")
         return
+
+    # Se houver filtro, inclui o nome da empresa no arquivo de saída
+    if empresa_filtro:
+        sufixo = re.sub(r"[^\w]", "_", empresa_filtro.strip().lower())
+        destino = destino.parent / f"resultado_auditoria_{sufixo}.csv"
+
     df.to_csv(destino, index=False, encoding="utf-8-sig")
     print(f"Resultado salvo em: {destino}")
 
@@ -156,6 +214,15 @@ def main() -> None:
     print(f"\nCarregando planilha geral: {planilha_geral.name}")
     df_alunos = carregar_alunos(planilha_geral)
     print(f"  {len(df_alunos)} aluno(s) encontrado(s).")
+
+    # --- Filtro por empresa ---
+    empresa_filtro = selecionar_filtro_empresa(df_alunos)
+    df_alunos = filtrar_por_empresa(df_alunos, empresa_filtro)
+    print(f"  {len(df_alunos)} aluno(s) após filtro.")
+
+    if df_alunos.empty:
+        print("Nenhum aluno para auditar. Encerrando.")
+        sys.exit(0)
 
     relatorios_paths = [p for p in csvs if p != planilha_geral]
     if not relatorios_paths:
@@ -173,8 +240,8 @@ def main() -> None:
         sys.exit(0)
 
     df_resultado = calcular_ausencias(df_alunos, relatorios)
-    exibir_resultado(df_resultado, list(relatorios.keys()))
-    salvar_resultado(df_resultado, diretorio / "resultado_auditoria.csv")
+    exibir_resultado(df_resultado, list(relatorios.keys()), empresa_filtro)
+    salvar_resultado(df_resultado, diretorio / "resultado_auditoria.csv", empresa_filtro)
 
 
 if __name__ == "__main__":
