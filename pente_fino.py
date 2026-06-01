@@ -52,23 +52,31 @@ def selecionar_planilha_geral(csvs: list[Path]) -> Path:
 
 def carregar_alunos(path: Path) -> pd.DataFrame:
     df = pd.read_csv(path, dtype=str).fillna("")
+    cols = set(df.columns)
 
-    colunas_necessarias = {"Nome", "Sobrenome"}
-    faltando = colunas_necessarias - set(df.columns)
-    if faltando:
-        print(f"ERRO: A planilha geral não tem as colunas: {faltando}")
-        sys.exit(1)
-
-    df["nome_completo"] = (df["Nome"] + " " + df["Sobrenome"]).str.strip()
-    df["_nome_norm"] = df["nome_completo"].apply(normalizar_nome)
-
-    if "Grupos" in df.columns:
-        grupos_parsed = df["Grupos"].apply(parsear_grupos)
-        df["estado"] = grupos_parsed.apply(lambda x: x[0])
-        df["empresa"] = grupos_parsed.apply(lambda x: x[1])
-    else:
+    if "residente" in cols:
+        # Formato: cnpj, empresa, residente, cpf_residente
+        df["nome_completo"] = df["residente"].str.strip()
+        df["_nome_norm"] = df["nome_completo"].apply(normalizar_nome)
+        df["empresa"] = df["empresa"].str.strip() if "empresa" in cols else ""
         df["estado"] = ""
-        df["empresa"] = ""
+    elif {"Nome", "Sobrenome"}.issubset(cols):
+        # Formato: Nome, Sobrenome, Grupos
+        df["nome_completo"] = (df["Nome"] + " " + df["Sobrenome"]).str.strip()
+        df["_nome_norm"] = df["nome_completo"].apply(normalizar_nome)
+        if "Grupos" in cols:
+            grupos_parsed = df["Grupos"].apply(parsear_grupos)
+            df["estado"] = grupos_parsed.apply(lambda x: x[0])
+            df["empresa"] = grupos_parsed.apply(lambda x: x[1])
+        else:
+            df["estado"] = ""
+            df["empresa"] = ""
+    else:
+        print(
+            "ERRO: A planilha geral precisa ter a coluna 'residente' "
+            "ou as colunas 'Nome' e 'Sobrenome'."
+        )
+        sys.exit(1)
 
     return df[["nome_completo", "_nome_norm", "estado", "empresa"]].drop_duplicates(
         subset=["_nome_norm"]
@@ -95,16 +103,15 @@ def calcular_ausencias(
             for nome_rel, respondentes in relatorios.items()
             if aluno["_nome_norm"] not in respondentes
         ]
-        if ausentes:
-            linhas.append(
-                {
-                    "nome_completo": aluno["nome_completo"],
-                    "estado": aluno["estado"],
-                    "empresa": aluno["empresa"],
-                    "relatorios_ausentes": ", ".join(sorted(ausentes)),
-                    "total_ausencias": len(ausentes),
-                }
-            )
+        linhas.append(
+            {
+                "nome_completo": aluno["nome_completo"],
+                "estado": aluno["estado"],
+                "empresa": aluno["empresa"],
+                "relatorios_ausentes": ", ".join(sorted(ausentes)),
+                "total_ausencias": len(ausentes),
+            }
+        )
     return pd.DataFrame(linhas)
 
 
@@ -113,31 +120,39 @@ def exibir_resultado(df: pd.DataFrame, nomes_relatorios: list[str]) -> None:
     print("-" * 80)
 
     if df.empty:
-        print("\nTodos os alunos responderam todos os relatórios.")
+        print("\nNenhum aluno encontrado.")
         return
 
     col_nome = max(df["nome_completo"].str.len().max(), len("Nome Completo"))
     col_estado = max(df["estado"].str.len().max(), len("Estado"))
     col_empresa = max(df["empresa"].str.len().max(), len("Empresa"))
+    col_ausentes = max(
+        df["relatorios_ausentes"].str.len().max() if not df["relatorios_ausentes"].eq("").all() else 0,
+        len("Relatórios Ausentes"),
+    )
 
     header = (
         f"{'Nome Completo':<{col_nome}}  "
         f"{'Estado':<{col_estado}}  "
         f"{'Empresa':<{col_empresa}}  "
-        f"Relatórios Ausentes"
+        f"{'Relatórios Ausentes':<{col_ausentes}}  "
+        f"Ausências"
     )
-    print(f"\nAlunos com ausências:\n{header}")
+    print(f"\n{header}")
     print("-" * len(header))
 
     for _, row in df.iterrows():
+        ausentes = row["relatorios_ausentes"] if row["relatorios_ausentes"] else "—"
         print(
             f"{row['nome_completo']:<{col_nome}}  "
             f"{row['estado']:<{col_estado}}  "
             f"{row['empresa']:<{col_empresa}}  "
-            f"{row['relatorios_ausentes']}"
+            f"{ausentes:<{col_ausentes}}  "
+            f"{row['total_ausencias']}"
         )
 
-    print(f"\nTotal: {len(df)} aluno(s) com pelo menos 1 ausência.")
+    com_ausencia = (df["total_ausencias"] > 0).sum()
+    print(f"\nTotal: {len(df)} aluno(s) | {com_ausencia} com pelo menos 1 ausência.")
 
 
 def salvar_resultado(df: pd.DataFrame, destino: Path) -> None:
