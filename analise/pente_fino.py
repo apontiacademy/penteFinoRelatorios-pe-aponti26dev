@@ -2,6 +2,7 @@ import argparse
 import re
 import sys
 from pathlib import Path
+from typing import Optional
 
 import pandas as pd
 
@@ -263,7 +264,7 @@ def salvar_resultado(df: pd.DataFrame, destino: Path, modo: str = "nao_feitos") 
     print(f"Resultado salvo em: {destino}")
 
 
-def main() -> None:
+def main(args_list: Optional[list[str]] = None) -> None:
     parser = argparse.ArgumentParser(
         description="Analisa presenças e ausências em relatórios de alunos.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
