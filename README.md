@@ -18,47 +18,64 @@ pip install pandas
 
 ## Como usar
 
-1. Coloque todos os arquivos `.csv` na mesma pasta:
-   - A **planilha geral** de alunos
-   - As **planilhas de relatório** (uma por relatório)
+### Modo interativo (sem argumentos)
 
-2. Execute o script apontando a pasta de origem ou navegue interativamente até ela:
+Execute o script sem argumentos:
 
 ```bash
+python pente_fino.py
+```
+
+O script fará 4 perguntas em sequência:
+
+1. **Pasta de input** (onde estão os CSVs)
+   - Deixe em branco ou pressione Enter para usar a pasta atual
+
+2. **Planilha principal**
+   - Escolha o número da planilha geral de alunos (será listada os CSVs encontrados)
+
+3. **Modo de visualização**
+   - Escolha: `1` para "Não feitos" ou `2` para "Feitos"
+
+4. **Caminho de saída**
+   - Deixe em branco para salvar em `./resultado.csv`
+   - Ou informe um caminho completo
+
+### Modo CLI (com argumentos)
+
+Você pode passar alguns ou todos os argumentos na linha de comando, pulando as perguntas interativas:
+
+```bash
+python pente_fino.py --pasta-origem ./relatorios -p residentes.csv -m nao_feitos -o resultado_custom.csv
+```
+
+**Importante:** Quando você passa `--planilha` via CLI, o script ignora a pasta de input e busca o arquivo no caminho descrito (absoluto ou relativo à pasta atual onde você rodar o comando).
+
+### Exemplos
+
+```bash
+# Modo interativo completo
+python pente_fino.py
+
+# Modo interativo com pasta de input já definida
 python pente_fino.py --pasta-origem ./relatorios
+
+# Modo semi-automático: abre a pasta, pergunta o resto
+python pente_fino.py -d ./relatorios
+
+# Modo CLI completo: nenhuma pergunta
+python pente_fino.py -d ./relatorios -p residentes.csv -m nao_feitos -o saida.csv
+
+# Planilha em outro local: busca o arquivo sem considerar pasta de input
+python pente_fino.py -p /home/user/dados/residentes.csv -m feitos
 ```
-
-Ou, se preferir, rode apenas `python pente_fino.py` e informe a pasta quando o script perguntar.
-
-3. O script lista os CSVs encontrados nessa pasta e pergunta qual é a planilha geral:
-
-```
-Arquivos CSV encontrados:
-  [1] alunos.csv
-  [2] relatorio_semana_01.csv
-  [3] relatorio_semana_02.csv
-
-Digite o número da planilha GERAL de alunos: 1
-```
-
-4. O script pergunta qual modo de visualização você deseja:
-
-```
-Escolha o modo de visualização:
-  [1] Não feitos (mostra quem não fez relatórios)
-  [2] Feitos (mostra quem fez relatórios)
-
-Digite o número do modo: 
-```
-
-5. O resultado é exibido no terminal e salvo em arquivo CSV (nome varia conforme o modo).
 
 ### Argumentos de CLI
 
-- `--pasta-origem` ou `-d`: define a pasta onde estão os CSVs.
-- `--planilha` ou `-p`: define o arquivo da planilha geral dentro da pasta de origem.
-- `--modo` ou `-m`: escolhe entre `feitos` e `nao_feitos`.
-- `--output` ou `-o`: define o caminho do CSV de saída.
+- `--pasta-origem` ou `-d`: Define a pasta onde estão os CSVs (padrão interativo: pasta atual)
+- `--planilha` ou `-p`: Define a planilha geral (em modo CLI, ignora a pasta de input e usa o caminho descrito)
+- `--modo` ou `-m`: Escolhe o modo: `feitos` ou `nao_feitos`
+- `--output` ou `-o`: Define o arquivo de saída (padrão: `./resultado.csv`)
 
 ## Formato esperado das planilhas
 

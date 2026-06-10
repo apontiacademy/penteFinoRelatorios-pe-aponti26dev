@@ -42,23 +42,17 @@ def listar_csvs(diretorio: Path) -> list[Path]:
 
 def selecionar_pasta_origem(padrao: Path) -> Path:
     print("\nEscolha a pasta de origem dos relatórios:")
-    print(f"  [1] Usar a pasta atual - {padrao.resolve()}")
-    print("  [2] Informar outro caminho")
-    while True:
-        try:
-            escolha = int(input("\nDigite o número da opção: "))
-            if escolha == 1:
-                return padrao.resolve()
-            if escolha == 2:
-                while True:
-                    caminho_input = input("Digite o caminho da pasta: ").strip()
-                    pasta = Path(caminho_input).expanduser().resolve()
-                    if pasta.is_dir():
-                        return pasta
-                    print("  ERRO: a pasta informada não existe ou não é um diretório.")
-            print("  Digite 1 ou 2.")
-        except ValueError:
-            print("  Entrada inválida. Digite apenas o número.")
+    print(f"  (Deixe em branco para usar a pasta atual: {padrao.resolve()})")
+    caminho_input = input("Digite o caminho da pasta ou deixe em branco: ").strip()
+    
+    if not caminho_input:
+        return padrao.resolve()
+    
+    pasta = Path(caminho_input).expanduser().resolve()
+    if not pasta.is_dir():
+        print(f"ERRO: A pasta '{caminho_input}' não existe ou não é um diretório.")
+        sys.exit(1)
+    return pasta
 
 
 def selecionar_planilha_geral(csvs: list[Path]) -> Path:
@@ -196,25 +190,15 @@ def selecionar_modo() -> str:
 
 def selecionar_caminho_output(diretorio: Path) -> Path:
     print("\nEscolha o caminho para salvar o arquivo de resultado:")
-    print(f"  [1] Padrão - {diretorio / 'resultado.csv'}")
-    print(f"  [2] Outro local")
-    while True:
-        try:
-            escolha = int(input("\nDigite o número da opção: "))
-            if escolha == 1:
-                return diretorio / "resultado.csv"
-            elif escolha == 2:
-                while True:
-                    caminho_input = input("Digite o caminho completo (ex: /caminho/arquivo.csv): ").strip()
-                    try:
-                        path = Path(caminho_input).resolve()
-                        path.parent.mkdir(parents=True, exist_ok=True)
-                        return path
-                    except Exception as e:
-                        print(f"  ERRO: Caminho inválido. {e}")
-            print("  Digite 1 ou 2.")
-        except ValueError:
-            print("  Entrada inválida. Digite apenas o número.")
+    print("  (Deixe em branco para usar o padrão: ./resultado.csv)")
+    caminho_input = input("Digite o caminho completo ou deixe em branco: ").strip()
+    
+    if not caminho_input:
+        return Path("resultado.csv").resolve()
+    
+    path = Path(caminho_input).resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def exibir_resultado(df: pd.DataFrame, nomes_relatorios: list[str], modo: str = "nao_feitos") -> None:
@@ -319,6 +303,7 @@ Exemplos de uso:
     
     args = parser.parse_args()
 
+    # === PASSO 1: Determinar pasta de input ===
     pasta_padrao = Path(".")
     if args.pasta_origem:
         diretorio = Path(args.pasta_origem).expanduser().resolve()
@@ -328,17 +313,26 @@ Exemplos de uso:
     else:
         diretorio = selecionar_pasta_origem(pasta_padrao)
 
-    csvs = listar_csvs(diretorio)
-    
-    # Selecionar planilha geral
+    # === PASSO 2: Determinar planilha geral ===
     if args.planilha:
-        planilha_geral = resolver_arquivo_csv(args.planilha, diretorio)
+        # Argumento CLI: busca o arquivo usando apenas o caminho descrito (ignora pasta de input)
+        planilha_geral = resolver_arquivo_csv(args.planilha, Path.cwd())
     else:
+        # Modo interativo: lista CSVs da pasta de input e pede para escolher
+        csvs = listar_csvs(diretorio)
         planilha_geral = selecionar_planilha_geral(csvs)
 
     print(f"\nCarregando planilha geral: {planilha_geral.name}")
     df_alunos = carregar_alunos(planilha_geral)
     print(f"  {len(df_alunos)} aluno(s) encontrado(s).")
+
+    # === PASSO 3: Determinar relatórios (sempre a partir da pasta de input) ===
+    if not args.planilha:
+        # Já listamos no passo 2
+        csvs = listar_csvs(diretorio)
+    else:
+        # Precisamos listar de novo para determinar os relatórios
+        csvs = list(diretorio.glob("*.csv"))
 
     relatorios_paths = [p for p in csvs if p != planilha_geral]
     if not relatorios_paths:
@@ -355,7 +349,7 @@ Exemplos de uso:
         print("Nenhum relatório válido encontrado. Encerrando.")
         sys.exit(0)
 
-    # Selecionar modo
+    # === PASSO 4: Determinar modo de visualização ===
     if args.modo:
         modo = args.modo
     else:
@@ -367,14 +361,14 @@ Exemplos de uso:
         df_resultado = calcular_presencas(df_alunos, relatorios)
 
     exibir_resultado(df_resultado, list(relatorios.keys()), modo)
-    
-    # Selecionar caminho do output
+
+    # === PASSO 5: Determinar caminho de saída ===
     if args.output:
         caminho_output = Path(args.output).resolve()
         caminho_output.parent.mkdir(parents=True, exist_ok=True)
     else:
         caminho_output = selecionar_caminho_output(diretorio)
-    
+
     salvar_resultado(df_resultado, caminho_output, modo)
 
 
