@@ -27,7 +27,9 @@ def tratar_caminho_relativo(valor_env: str | None, padrao: str) -> Path:
 
 
 def main():
-    print("\n--- [Escopo 3: Sincronizando Coluna D com Google Sheets] ---")
+    print("=" * 80)
+    print("▶ [ESCOPO 3] INTEGRAÇÃO (GOOGLE SHEETS)")
+    print("=" * 80)
 
     # 1. Carrega caminhos e configurações tratando os caminhos relativos para a pasta do escopo
     caminho_csv = tratar_caminho_relativo(os.getenv("MOODLE_ANALYSIS_OUTPUT_CSV"), "./dados/resultado.csv")
@@ -37,60 +39,69 @@ def main():
     aba_name = os.getenv("GOOGLE_SHEETS_ABA_NAME", "Página1")
 
     if not caminho_csv.exists():
-        print(f"ERRO: Arquivo de auditoria não encontrado em: {caminho_csv}")
-        print("Certifique-se de rodar o Escopo 2 antes de iniciar o Escopo 3.")
+        print(f"  ❌ ERRO: Arquivo de auditoria não encontrado em: {caminho_csv}", file=sys.stderr)
+        print("  • Certifique-se de rodar o Escopo 2 antes de iniciar o Escopo 3.", file=sys.stderr)
+        print("=" * 80)
         sys.exit(1)
 
     if not credentials_path.exists():
-        print(f"ERRO: Arquivo de credenciais do Google não encontrado em: {credentials_path}")
+        print(f"  ❌ ERRO: Arquivo de credenciais do Google não encontrado em: {credentials_path}", file=sys.stderr)
+        print("=" * 80)
         sys.exit(1)
 
     if not sheet_id:
-        print("ERRO: GOOGLE_SHEETS_ID não configurado no arquivo .env.")
+        print("  ❌ ERRO: GOOGLE_SHEETS_ID não configurado no arquivo .env.", file=sys.stderr)
+        print("=" * 80)
         sys.exit(1)
 
     # 2. Ler a coluna D do arquivo CSV local
-    print(f"[Escopo 3] Lendo dados locais de {caminho_csv.name}...")
+    print(f"  • Lendo dados locais de {caminho_csv.name}...")
     try:
         df = pd.read_csv(caminho_csv, encoding="utf-8-sig")
     except Exception:
         df = pd.read_csv(caminho_csv, encoding="latin1")
 
     if df.shape[1] < 4:
-        print("ERRO: O CSV de resultado possui menos de 4 colunas. Coluna D indisponível.")
+        print("  ❌ ERRO: O CSV de resultado possui menos de 4 colunas. Coluna D indisponível.", file=sys.stderr)
+        print("=" * 80)
         sys.exit(1)
 
     # Captura o nome da quarta coluna (Índice 3 = Coluna D) e os valores
     nome_coluna_d = df.columns[3]
     valores_coluna_d = df.iloc[:, 3].fillna("").astype(str).tolist()
 
-    # Monta a estrutura de lista de listas exigida pela API do Google para colunas: [[linha1], [linha2], ...]
+    # Monta a estrutura de lista de locais exigida pela API do Google para colunas: [[linha1], [linha2], ...]
     dados_para_enviar = [[nome_coluna_d]] + [[valor] for valor in valores_coluna_d]
 
     # 3. Autenticar e conectar ao Google Sheets
     try:
-        print("[Escopo 3] Autenticando com a API do Google...")
+        print("  • Autenticando com a API do Google...")
         gc = gspread.service_account(filename=str(credentials_path))
         
-        print("[Escopo 3] Abrindo a planilha por ID...")
+        print("  • Abrindo a planilha por ID...")
         planilha = gc.open_by_key(sheet_id)
         worksheet = planilha.worksheet(aba_name)
 
         # 4. Sobrescrever a Coluna D com segurança
-        print(f"[Escopo 3] Limpando dados antigos da Coluna D na aba '{aba_name}'...")
+        print(f"  • Limpando dados antigos da Coluna D na aba '{aba_name}'...")
         worksheet.batch_clear(['D:D'])
 
-        print(f"[Escopo 3] Colando os novos dados na Coluna D (Total de linhas: {len(dados_para_enviar)})...")
+        print(f"  • Colando novos dados na Coluna D (Total de linhas: {len(dados_para_enviar)})...")
         worksheet.update(range_name='D1', values=dados_para_enviar)
 
-        print("✨ [Escopo 3] Google Sheets atualizado com sucesso!")
+        print("  ✔ Google Sheets atualizado com sucesso!")
+        print("\n✔ Escopo 3 finalizado com sucesso!")
 
     except gspread.exceptions.WorksheetNotFound:
-        print(f"ERRO: A aba '{aba_name}' não foi encontrada na planilha fornecida.")
+        print(f"  ❌ ERRO: A aba '{aba_name}' não foi encontrada na planilha fornecida.", file=sys.stderr)
+        print("=" * 80)
         sys.exit(1)
     except Exception as e:
-        print(f"ERRO inesperado durante a integração com o Google Sheets: {e}")
+        print(f"  ❌ ERRO inesperado durante a integração com o Google Sheets: {e}", file=sys.stderr)
+        print("=" * 80)
         sys.exit(1)
+
+    print("=" * 80)
 
 
 if __name__ == "__main__":

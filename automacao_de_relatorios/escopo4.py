@@ -26,11 +26,11 @@ def realizar_backup_local_xlsx(credentials_path: Path, spreadsheet_id: str, back
     SCOPES = ['https://www.googleapis.com/auth/drive']
     
     try:
-        print("  [Drive API] Autenticando com a conta de serviço...")
+        print("  • Autenticando com a conta de serviço...")
         creds = Credentials.from_service_account_file(str(credentials_path), scopes=SCOPES)
         service = build('drive', 'v3', credentials=creds)
         
-        print("  [Drive API] Buscando informações da planilha original...")
+        print("  • Buscando informações da planilha original...")
         file_metadata = service.files().get(
             fileId=spreadsheet_id, 
             fields='name',
@@ -45,7 +45,7 @@ def realizar_backup_local_xlsx(credentials_path: Path, spreadsheet_id: str, back
         nome_arquivo = f"[BACKUP {data_formatada}] {nome_original}.xlsx"
         caminho_final = backup_dir / nome_arquivo
         
-        print("  [Drive API] Exportando planilha do Google Sheets para XLSX (Excel)...")
+        print("  • Exportando planilha do Google Sheets para XLSX (Excel)...")
         # O método 'export_media' faz a conversão em tempo real nos servidores do Google
         request = service.files().export_media(
             fileId=spreadsheet_id,
@@ -53,21 +53,21 @@ def realizar_backup_local_xlsx(credentials_path: Path, spreadsheet_id: str, back
         )
         conteudo_binario = request.execute()
         
-        print("  [Local] Gravando arquivo digital no disco...")
+        print("  • Gravando arquivo digital no disco...")
         with open(caminho_final, "wb") as f:
             f.write(conteudo_binario)
             
-        print("➔ Cópia local gerada com sucesso!")
+        print(f"  ✔ Cópia local gerada: {nome_arquivo}")
         return nome_arquivo
         
     except Exception as e:
-        print(f"❌ ERRO no processo de backup local: {e}", file=sys.stderr)
+        print(f"  ❌ ERRO: Falha no processo de backup local: {e}", file=sys.stderr)
         return None
 
 
 def main():
     print("=" * 80)
-    print("INICIANDO ESCOPO 4: BACKUP LOCAL EM EXCEL (.XLSX)")
+    print("▶ [ESCOPO 4] BACKUP AUTOMÁTICO (.XLSX)")
     print("=" * 80)
 
     # Coleta as variáveis com fallback de string vazia para agradar o linter (Pylance/Pyright)
@@ -84,12 +84,13 @@ def main():
         erros.append("- GOOGLE_SHEETS_ID (ID da planilha original)")
 
     if erros:
-        print("❌ ERRO: Faltam configurações essenciais no seu arquivo .env:")
+        print("  ❌ ERRO: Faltam configurações essenciais no seu arquivo .env:", file=sys.stderr)
         for erro in erros:
-            print(erro)
+            print(f"    {erro}", file=sys.stderr)
+        print("=" * 80)
         sys.exit(1)
 
-    # TRATAMENTO DE PATHS RELATIVOS (Igualzinho ao Escopo 1):
+    # TRATAMENTO DE PATHS RELATIVOS:
     # Trata as credenciais
     credenciais_limpo = credentials_raw.lstrip("./")
     credentials_path = (PASTA_ESCOPO / credenciais_limpo).resolve()
@@ -99,7 +100,8 @@ def main():
     backup_dir = (PASTA_ESCOPO / diretorio_limpo).resolve()
 
     if not credentials_path.exists():
-        print(f"❌ ERRO: O arquivo de credenciais não foi encontrado em: {credentials_path}")
+        print(f"  ❌ ERRO: O arquivo de credenciais não foi encontrado em: {credentials_path}", file=sys.stderr)
+        print("=" * 80)
         sys.exit(1)
 
     # Cria as pastas locais se não existirem (dados/backups/)
@@ -109,9 +111,10 @@ def main():
     arquivo_gerado = realizar_backup_local_xlsx(credentials_path, spreadsheet_id, backup_dir)
     
     if arquivo_gerado:
-        print(f"\n✓ Escopo 4 finalizado! Arquivo: {arquivo_gerado}")
+        print("\n✔ Escopo 4 finalizado com sucesso!")
     else:
-        print("\n⚠️ Escopo 4 terminou com falhas (veja os logs acima).")
+        print("\n⚠️ Escopo 4 terminou com falhas (veja os logs acima).", file=sys.stderr)
+        
     print("=" * 80)
 
 
