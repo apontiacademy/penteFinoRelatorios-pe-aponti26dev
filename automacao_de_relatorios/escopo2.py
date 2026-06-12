@@ -14,7 +14,7 @@ PASTA_ESCOPO = Path(__file__).resolve().parent
 if str(PASTA_ESCOPO.parent) not in sys.path:
     sys.path.append(str(PASTA_ESCOPO.parent))
 
-# Importa o main do seu script de análise (ajuste o path de import se necessário)
+# Importa o main do seu script de análise
 from auditoria_de_relatorios.executar import main as executar_analise_core  # noqa: E402
 
 # Força o carregamento do .env que está EXCLUSIVAMENTE dentro desta pasta de automação
@@ -34,7 +34,11 @@ def tratar_caminho_relativo(valor_env: str | None) -> str | None:
 
 
 def main():
-    print("\n--- [Middleware Escopo 2: Mapeando Variáveis de Ambiente] ---")
+    print("=" * 80)
+    print("▶ [ESCOPO 2] ANÁLISE PENTE-FINO (MIDDLEWARE)")
+    print("=" * 80)
+    
+    print("  • Mapeando variáveis de ambiente e tratando caminhos...")
     
     # Captura os dados configurados no seu .env local e trata os caminhos dinamicamente
     pasta_origem_raw = os.getenv("MOODLE_DOWNLOAD_DIR")
@@ -63,10 +67,16 @@ def main():
     if arquivo_saida:
         argumentos_cli.extend(["-o", arquivo_saida])
 
-    print(f"[Middleware] Injetando argumentos no Core: {' '.join(argumentos_cli)}")
+    print(f"  • Injetando argumentos no Core: {' '.join(argumentos_cli)}")
     
-    # Executa enviando a lista limpa diretamente no parâmetro mapeado do Core
-    executar_analise_core(argumentos_cli)
+    try:
+        # Executa enviando a lista limpa diretamente no parâmetro mapeado do Core
+        executar_analise_core(argumentos_cli)
+        print("\n✔ Escopo 2 finalizado com sucesso!")
+    except Exception as e:
+        print(f"\n⚠️ Escopo 2 terminou com falhas: {e}", file=sys.stderr)
+        
+    print("=" * 80)
 
 
 if __name__ == "__main__":

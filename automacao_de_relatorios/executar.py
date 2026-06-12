@@ -1,21 +1,33 @@
 import automacao_de_relatorios.escopo1 as escopo1
 import automacao_de_relatorios.escopo2 as escopo2
 import automacao_de_relatorios.escopo3 as escopo3
+import automacao_de_relatorios.escopo4 as escopo4
 
 
 def main():
-    print("=== INICIANDO PIPELINE DE AUTOMATIZAÇÃO ===")
+    # Banner de abertura do Pipeline Geral
+    print("=" * 80)
+    print("▶ INICIANDO PIPELINE DE AUTOMATIZAÇÃO DE RELATÓRIOS")
+    print("=" * 80)
+    print()  # Quebra de linha para dar respiro visual
 
-    print("\n--- [Iniciando Escopo 1: Automação de Downloads] ---")
+    # Execução sequencial dos escopos empacotados
     escopo1.main()
-    
-    print("\n--- [Iniciando Escopo 2: Middleware de Processamento] ---")
-    escopo2.main()
+    print()
 
-    print("\n--- [Iniciando Escopo 3: Integração com Google Sheets] ---")
+    escopo2.main()
+    print()
+
     escopo3.main()
+    print()
+
+    escopo4.main()
+    print()
     
-    print("\n=== PIPELINE DE AUTOMATIZAÇÃO CONCLUÍDO COM SUCESSO ===")
+    # Banner de encerramento de sucesso absoluto
+    print("=" * 80)
+    print("✔ PIPELINE EXECUTADO E CONCLUÍDO COM SUCESSO ABSOLUTO!")
+    print("=" * 80)
 
 
 if __name__ == "__main__":

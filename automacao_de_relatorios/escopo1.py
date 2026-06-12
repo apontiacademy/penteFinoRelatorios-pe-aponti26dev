@@ -1,4 +1,5 @@
 import os
+import sys  # Adicionado para suportar sys.stderr nos logs de erro
 import time
 from pathlib import Path
 
@@ -18,14 +19,14 @@ load_dotenv(dotenv_path=env_path, override=True)
 
 def fazer_login(page, login_url, username, password):
     """Realiza o login no Moodle de forma agnóstica a idioma e modo de execução."""
-    print("[Moodle] Iniciando processo de login...")
+    print("  • Iniciando processo de login...")
     page.goto(login_url)
     page.wait_for_load_state("domcontentloaded")
     
     try:
         botao_sair = page.locator("#logininsidebaric, button:has-text('Sair'), button:has-text('Log out')").first
         botao_sair.wait_for(state="visible", timeout=2000)
-        print("[Moodle] Sessão fantasma detectada! Clicando em 'Sair' para limpar...")
+        print("  • Sessão fantasma detectada! Clicando em 'Sair' para limpar...")
         botao_sair.click()
         page.wait_for_load_state("networkidle")
         page.goto(login_url)
@@ -33,7 +34,7 @@ def fazer_login(page, login_url, username, password):
     except Exception:
         pass
 
-    print("[Moodle] Preenchendo credenciais...")
+    print("  • Preenchendo credenciais...")
     page.locator("#username").fill(username)
     
     try:
@@ -49,19 +50,19 @@ def fazer_login(page, login_url, username, password):
         page.locator("button[type='submit']").click()
         page.wait_for_load_state("networkidle")
         
-    print("[Moodle] Login realizado com sucesso!")
+    print("  ✔ Login realizado com sucesso!")
 
 
 def baixar_relatorio(page, url, caminho_final, login_url, username, password):
     """Acessa a URL específica e gerencia o download de um único relatório."""
-    print(f"[Moodle] Acessando relatório: {url}")
+    print(f"  • Acessando relatório: {url}")
     page.goto(url)
     page.wait_for_load_state("networkidle")
 
     botao_download = page.get_by_role("button", name="Download")
     
     if "login" in page.url or not botao_download.is_visible():
-        print("[Moodle] Sessão expirada ou sem permissão. Reconectando...")
+        print("  • Sessão expirada ou sem permissão. Reconectando...")
         fazer_login(page, login_url, username, password)
         page.goto(url)
         page.wait_for_load_state("networkidle")
@@ -74,16 +75,20 @@ def baixar_relatorio(page, url, caminho_final, login_url, username, password):
             
             download = download_info.value
             download.save_as(str(caminho_final))
-            print(f"[Moodle] Sucesso! Salvo em: {caminho_final}")
+            print(f"  ✔ Sucesso! Salvo em: {caminho_final}")
         else:
-            print(f"[Moodle] [Erro] O botão de download não apareceu na página final: {url}")
+            print(f"  ❌ ERRO: O botão de download não apareceu na página final: {url}", file=sys.stderr)
             
     except Exception as e:
-        print(f"[Moodle] [Erro] Falha ao baixar o relatório {url}: {e}")
+        print(f"  ❌ ERRO: Falha ao baixar o relatório {url}: {e}", file=sys.stderr)
 
 
 def main():
     """Função principal que orquestra o Escopo 1."""
+    print("=" * 80)
+    print("▶ [ESCOPO 1] EXTRAÇÃO DE RELATÓRIOS (MOODLE)")
+    print("=" * 80)
+
     login_url = os.getenv("MOODLE_LOGIN_URL")
     username = os.getenv("MOODLE_USERNAME")
     password = os.getenv("MOODLE_PASSWORD")
@@ -94,12 +99,12 @@ def main():
     download_dir_raw = os.getenv("MOODLE_DOWNLOAD_DIR", "./dados/relatorios/")
     
     # TRATAMENTO DOS PATHS RELATIVOS: 
-    # Remove o './' inicial se existir e força a criação DENTRO de automacao_de_relatorios/
     diretorio_limpo = download_dir_raw.lstrip("./")
     download_dir = (PASTA_ESCOPO / diretorio_limpo).resolve()
 
     if not urls_raw:
-        print("[Moodle] [Erro] Nenhuma URL de relatório encontrada no .env")
+        print("  ❌ ERRO: Nenhuma URL de relatório encontrada no .env", file=sys.stderr)
+        print("=" * 80)
         return
     
     urls = [url.strip() for url in urls_raw.split(",") if url.strip()]
@@ -107,28 +112,34 @@ def main():
     # Cria a estrutura de pastas (ex: automacao_de_relatorios/dados/relatorios/)
     download_dir.mkdir(parents=True, exist_ok=True)
 
-    with sync_playwright() as p:
-        chrome_args = ["--disable-blink-features=AutomationControlled"]
-        if headless:
-            chrome_args.append("--start-maximized")
+    try:
+        with sync_playwright() as p:
+            chrome_args = ["--disable-blink-features=AutomationControlled"]
+            if headless:
+                chrome_args.append("--start-maximized")
 
-        browser = p.chromium.launch(headless=headless, args=chrome_args)
-        
-        context = browser.new_context(
-            user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            viewport={"width": 1366, "height": 768}
-        )
-        page = context.new_page()
-
-        fazer_login(page, login_url, username, password)
-
-        for index, url in enumerate(urls, start=1):
-            nome_arquivo = f"relatorio{index}.csv"
-            # Monta o caminho final absoluto concatenando na nossa pasta alvo tratada
-            caminho_final = download_dir / nome_arquivo
+            browser = p.chromium.launch(headless=headless, args=chrome_args)
             
-            baixar_relatorio(page, url, caminho_final, login_url, username, password)
-            time.sleep(1.5)
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                viewport={"width": 1366, "height": 768}
+            )
+            page = context.new_page()
+
+            fazer_login(page, login_url, username, password)
+
+            for index, url in enumerate(urls, start=1):
+                nome_arquivo = f"relatorio{index}.csv"
+                caminho_final = download_dir / nome_arquivo
+                
+                baixar_relatorio(page, url, caminho_final, login_url, username, password)
+                time.sleep(1.5)
+                
+        print("\n✔ Escopo 1 finalizado com sucesso!")
+    except Exception as e:
+        print(f"\n⚠️ Escopo 1 terminou com falhas: {e}", file=sys.stderr)
+        
+    print("=" * 80)
 
 
 if __name__ == "__main__":
