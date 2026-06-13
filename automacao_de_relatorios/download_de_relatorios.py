@@ -1,29 +1,22 @@
-import os
-import sys  # Adicionado para suportar sys.stderr nos logs de erro
+import sys
 import time
 from pathlib import Path
 
-from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
 
-# =========================================================================
-# ANCORAGEM DINÂMICA DE ESCOPO
-# =========================================================================
-# Caminho absoluto da pasta 'automacao_de_relatorios'
-PASTA_ESCOPO = Path(__file__).resolve().parent
+from .config import Config  # Importa a nossa Dataclass centralizada
 
-# Força o carregamento do .env que está EXCLUSIVAMENTE dentro desta pasta
-env_path = PASTA_ESCOPO / ".env"
-load_dotenv(dotenv_path=env_path, override=True)
+BASE_DIR = Path(__file__).resolve().parent
 
 
-def fazer_login(page, login_url, username, password):
+def realizar_login(page, login_url, usuario, senha):
     """Realiza o login no Moodle de forma agnóstica a idioma e modo de execução."""
     print("  • Iniciando processo de login...")
     page.goto(login_url)
     page.wait_for_load_state("domcontentloaded")
     
     try:
+        # Trata possíveis sessões ativas sobrepostas
         botao_sair = page.locator("#logininsidebaric, button:has-text('Sair'), button:has-text('Log out')").first
         botao_sair.wait_for(state="visible", timeout=2000)
         print("  • Sessão fantasma detectada! Clicando em 'Sair' para limpar...")
@@ -35,26 +28,26 @@ def fazer_login(page, login_url, username, password):
         pass
 
     print("  • Preenchendo credenciais...")
-    page.locator("#username").fill(username)
+    page.locator("#username").fill(usuario)
     
     try:
-        page.locator("#password").fill(password)
+        page.locator("#password").fill(senha)
     except Exception:
-        page.locator("input[name='password']").fill(password)
+        page.locator("input[name='password']").fill(senha)
     
     try:
         page.locator("#loginbtn").click(timeout=5000)
         page.wait_for_load_state("networkidle")
     except Exception:
-        page.screenshot(path=str(PASTA_ESCOPO / "debug_falha_login.png"))
+        page.screenshot(path=str(BASE_DIR / "debug_falha_login.png"))
         page.locator("button[type='submit']").click()
         page.wait_for_load_state("networkidle")
         
     print("  ✔ Login realizado com sucesso!")
 
 
-def baixar_relatorio(page, url, caminho_final, login_url, username, password):
-    """Acessa a URL específica e gerencia o download de um único relatório."""
+def baixar_relatorio(page, url, caminho_saida, login_url, usuario, senha):
+    """Acessa uma URL específica e gerencia o download de um único relatório."""
     print(f"  • Acessando relatório: {url}")
     page.goto(url)
     page.wait_for_load_state("networkidle")
@@ -63,19 +56,20 @@ def baixar_relatorio(page, url, caminho_final, login_url, username, password):
     
     if "login" in page.url or not botao_download.is_visible():
         print("  • Sessão expirada ou sem permissão. Reconectando...")
-        fazer_login(page, login_url, username, password)
+        realizar_login(page, login_url, usuario, senha)
         page.goto(url)
         page.wait_for_load_state("networkidle")
 
     try:
         botao_download = page.get_by_role("button", name="Download")
         if botao_download.is_visible():
-            with page.expect_download(timeout=15000) as download_info:
+            with page.expect_download(timeout=15000) as informacao_download:
                 botao_download.click()
             
-            download = download_info.value
-            download.save_as(str(caminho_final))
-            print(f"  ✔ Sucesso! Salvo em: {caminho_final}")
+            download = informacao_download.value
+            # Conversão explícita de Path para string para execução cross-platform robusta
+            download.save_as(str(caminho_saida))
+            print(f"  ✔ Sucesso! Salvo em: {caminho_saida}")
         else:
             print(f"  ❌ ERRO: O botão de download não apareceu na página final: {url}", file=sys.stderr)
             
@@ -83,56 +77,53 @@ def baixar_relatorio(page, url, caminho_final, login_url, username, password):
         print(f"  ❌ ERRO: Falha ao baixar o relatório {url}: {e}", file=sys.stderr)
 
 
-def main():
+def main(config: Config):
     """Função principal que orquestra o Escopo 1."""
     print("=" * 80)
     print("▶ [ESCOPO 1] EXTRAÇÃO DE RELATÓRIOS (MOODLE)")
     print("=" * 80)
-
-    login_url = os.getenv("MOODLE_LOGIN_URL")
-    username = os.getenv("MOODLE_USERNAME")
-    password = os.getenv("MOODLE_PASSWORD")
-    urls_raw = os.getenv("MOODLE_REPORT_URLS", "")
-    headless = os.getenv("MOODLE_HEADLESS", "true").lower() == "true"
     
-    # Pegamos o valor bruto do .env (ex: './dados/relatorios/')
-    download_dir_raw = os.getenv("MOODLE_DOWNLOAD_DIR", "./dados/relatorios/")
-    
-    # TRATAMENTO DOS PATHS RELATIVOS: 
-    diretorio_limpo = download_dir_raw.lstrip("./")
-    download_dir = (PASTA_ESCOPO / diretorio_limpo).resolve()
+    # Atributos mapeados conforme a nova dataclass traduzida
+    login_url = config.moodle.url_login
+    usuario = config.moodle.usuario
+    senha = config.moodle.senha
+    urls_moodle = config.moodle.urls_relatorios
+    headless = config.moodle.headless
+    diretorio_download = config.moodle.caminho_download_relatorio
 
-    if not urls_raw:
-        print("  ❌ ERRO: Nenhuma URL de relatório encontrada no .env", file=sys.stderr)
+    if not urls_moodle:
+        print("  ❌ ERRO: Nenhuma URL de relatório encontrada no settings.json", file=sys.stderr)
         print("=" * 80)
         return
     
-    urls = [url.strip() for url in urls_raw.split(",") if url.strip()]
-    
-    # Cria a estrutura de pastas (ex: automacao_de_relatorios/dados/relatorios/)
-    download_dir.mkdir(parents=True, exist_ok=True)
+    # Cria a estrutura de diretórios usando o objeto Path nativo vindo do Config
+    diretorio_download.mkdir(parents=True, exist_ok=True)
 
     try:
         with sync_playwright() as p:
             chrome_args = ["--disable-blink-features=AutomationControlled"]
-            if headless:
+            
+            # --start-maximized requer headless=False (sem_janela=False) para funcionar corretamente
+            if not headless:
                 chrome_args.append("--start-maximized")
 
-            browser = p.chromium.launch(headless=headless, args=chrome_args)
+            navegador = p.chromium.launch(headless=headless, args=chrome_args)
             
-            context = browser.new_context(
+            contexto = navegador.new_context(
                 user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
                 viewport={"width": 1366, "height": 768}
             )
-            page = context.new_page()
+            pagina = contexto.new_page()
 
-            fazer_login(page, login_url, username, password)
+            realizar_login(pagina, login_url, usuario, senha)
 
-            for index, url in enumerate(urls, start=1):
-                nome_arquivo = f"relatorio{index}.csv"
-                caminho_final = download_dir / nome_arquivo
+            # Itera sobre a lista limpa vinda do Config
+            for indice, url in enumerate(urls_moodle, start=1):
+                nome_arquivo = f"relatorio{indice}.csv"
+                # CORRIGIDO: Atribuição limpa sem a variável 'Razor'
+                caminho_saida = diretorio_download / nome_arquivo
                 
-                baixar_relatorio(page, url, caminho_final, login_url, username, password)
+                baixar_relatorio(pagina, url, caminho_saida, login_url, usuario, senha)
                 time.sleep(1.5)
                 
         print("\n✔ Escopo 1 finalizado com sucesso!")
@@ -143,4 +134,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # Carrega as configurações unificadas e repassa para a main
+    configuracao_carregada = Config.load()
+    main(configuracao_carregada)
